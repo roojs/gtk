@@ -2,7 +2,6 @@ package org.gtk.android;
 
 import android.text.Editable;
 import android.text.Selection;
-import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -86,11 +85,9 @@ public final class ImContext {
 		@Override
 		public boolean commitText(CharSequence text, int newCursorPosition) {
 			logger.info("IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
-			super.commitText(text, newCursorPosition);
 
-			Editable content = getEditable();
-			GlibContext.blockForMain(() -> ImContext.this.commit(content.toString()));
-			content.clear();
+			if (text != null && text.length() > 0)
+				GlibContext.blockForMain(() -> ImContext.this.commit(text.toString()));
 			return true;
 		}
 
@@ -98,10 +95,13 @@ public final class ImContext {
 		public boolean deleteSurroundingText(int leftLength, int rightLength) {
 			logger.info("IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
 
-			// The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
-			KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
-			for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
-			return super.deleteSurroundingText(leftLength, rightLength);
+			GlibContext.blockForMain(() -> {
+				if (leftLength > 0)
+					ImContext.this.deleteSurrounding(-leftLength, leftLength);
+				if (rightLength > 0)
+					ImContext.this.deleteSurrounding(0, rightLength);
+			});
+			return true;
 		}
 	}
 }

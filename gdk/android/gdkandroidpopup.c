@@ -75,6 +75,23 @@ gdk_android_popup_present (GdkPopup       *popup,
                                    GDK_SURFACE_LAYOUT_POPUP_HELPER_ROOT_OUT,
                                    &self->popup_bounds);
 
+  /* Keep native geometry in sync with the layout result. Child popups
+   * (e.g. touch selection bubbles inside a dialog) consult the parent
+   * surface position during layout, but Java only reports position
+   * asynchronously via notifyLayoutPosition. */
+  {
+    GdkSurface *surface = GDK_SURFACE (self);
+
+    surface->x = self->popup_bounds.x;
+    surface->y = self->popup_bounds.y;
+    surface->width = self->popup_bounds.width;
+    surface->height = self->popup_bounds.height;
+    surface_impl->cfg.x = (gint) (self->popup_bounds.x * parent_impl->cfg.scale);
+    surface_impl->cfg.y = (gint) (self->popup_bounds.y * parent_impl->cfg.scale);
+    surface_impl->cfg.width = (gint) ceilf (self->popup_bounds.width * parent_impl->cfg.scale);
+    surface_impl->cfg.height = (gint) ceilf (self->popup_bounds.height * parent_impl->cfg.scale);
+  }
+
   JNIEnv *env = gdk_android_get_env ();
   if (!surface_impl->surface)
     {
