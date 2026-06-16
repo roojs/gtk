@@ -3,14 +3,13 @@ package org.gtk.android;
 import android.text.Editable;
 import android.text.Selection;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.InputMethodManager;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
-
-import java.util.logging.Logger;
 
 public final class ImContext {
 	private static final String IME_LOG_TAG = "OLLMchat.IME";
@@ -85,51 +84,75 @@ public final class ImContext {
 	}
 
 	final class ImeConnection extends BaseInputConnection {
-		private Logger logger;
-
 		public ImeConnection(@NonNull View target) {
 			super(target, true);
-			this.logger = Logger.getLogger("IME Connection");
 		}
 
 		@Override
 		public boolean setComposingText(CharSequence text, int newCursorPosition) {
-			logger.info("IME: setComposingText()");
+			Editable content = getEditable();
+			Log.i(IME_LOG_TAG, "setComposingText len="
+					+ (text != null ? text.length() : -1)
+					+ " editable_len=" + (content != null ? content.length() : -1));
 			super.setComposingText(text, newCursorPosition);
 
-			Editable content = getEditable();
+			content = getEditable();
 			GlibContext.blockForMain(() -> {
 				int a = Selection.getSelectionStart(content);
 				int b = Selection.getSelectionEnd(content);
 				if (a > b)
 					b = a;
-
 				ImContext.this.updatePreedit(content.toString(), b);
 			});
-			syncEditableFromGtk(getEditable());
+			/* GTK preedit is authoritative; full Editable replace breaks Gboard repeat. */
 			return true;
 		}
 
 		@Override
 		public boolean finishComposingText() {
-			logger.info("IME: finishComposingText()");
+			Editable content = getEditable();
+			int editableLen = content != null ? content.length() : -1;
+			Log.i(IME_LOG_TAG, "finishComposingText editable_len=" + editableLen);
 			super.finishComposingText();
 
-			Editable content = getEditable();
-			if (content.length() > 0)
+			content = getEditable();
+			if (content != null && content.length() > 0) {
 				GlibContext.blockForMain(() -> ImContext.this.commit(content.toString()));
-			syncEditableFromGtk(getEditable());
+				syncEditableFromGtk(content);
+			}
+			/* Empty Editable + Gboard backspace: skip sync to avoid resetting IME repeat. */
 			return true;
 		}
 
 		@Override
 		public boolean commitText(CharSequence text, int newCursorPosition) {
-			logger.info("IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
+			Log.i(IME_LOG_TAG, "commitText len="
+					+ (text != null ? text.length() : -1)
+					+ " newCursor=" + newCursorPosition);
 
 			if (text != null && text.length() > 0)
 				GlibContext.blockForMain(() -> ImContext.this.commit(text.toString()));
 			syncEditableFromGtk(getEditable());
 			return true;
+		}
+
+		@Override
+		public boolean sendKeyEvent(KeyEvent event) {
+			if (event != null) {
+				Log.i(IME_LOG_TAG, "sendKeyEvent keyCode=" + event.getKeyCode()
+						+ " action=" + event.getAction()
+						+ " repeat=" + event.getRepeatCount());
+				if (event.getKeyCode() == KeyEvent.KEYCODE_DEL
+						&& (event.getAction() == KeyEvent.ACTION_DOWN
+								|| event.getAction() == KeyEvent.ACTION_MULTIPLE)) {
+					int count = event.getRepeatCount() > 0 ? event.getRepeatCount() : 1;
+					for (int i = 0; i < count; i++) {
+						GlibContext.blockForMain(() -> ImContext.this.deleteSurrounding(-1, 1));
+					}
+					return true;
+				}
+			}
+			return super.sendKeyEvent(event);
 		}
 
 		@Override

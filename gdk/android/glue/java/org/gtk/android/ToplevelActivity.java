@@ -283,8 +283,7 @@ public class ToplevelActivity extends Activity {
 				if (activeImContext == null)
 					return null;
 				outAttrs.contentMimeTypes = new String[] { "text/plain" };
-				//outAttrs.inputType = GlibContext.blockForMain(() -> activeImContext.getInputType());
-				outAttrs.inputType = InputType.TYPE_NULL;
+				outAttrs.inputType = GlibContext.blockForMain(() -> activeImContext.getInputType());
 				outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
 				return activeImContext.new ImeConnection(this);
 			}

@@ -3424,6 +3424,16 @@ gtk_text_drag_gesture_end (GtkGestureDrag *gesture,
   gtk_text_update_handles (self);
 
   gtk_text_update_primary_selection (self);
+
+  if (priv->text_handles_enabled &&
+      priv->selection_bound != priv->current_pos)
+    {
+      g_message ("OLLMchat.Paste: drag-end showing bubble widget=%s "
+                 "sel=%d..%d",
+                 G_OBJECT_TYPE_NAME (self),
+                 priv->selection_bound, priv->current_pos);
+      gtk_text_selection_bubble_popup_set (self);
+    }
 }
 
 static void
