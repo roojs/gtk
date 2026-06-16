@@ -312,7 +312,7 @@ struct _GtkTextPrivate
   guint         populate_all            : 1;
   guint         propagate_text_width    : 1;
   guint         text_handles_enabled    : 1;
-  guint         touch_long_press_pending_bubble : 1;
+  guint         in_long_press           : 1;
   guint         enable_undo             : 1;
 };
 
@@ -3071,9 +3071,9 @@ gtk_text_click_gesture_released (GtkGestureClick *gesture,
 
   if (n_press == 1 &&
       gtk_event_treat_as_touch (event) &&
-      priv->touch_long_press_pending_bubble)
+      priv->in_long_press)
     {
-      priv->touch_long_press_pending_bubble = FALSE;
+      priv->in_long_press = FALSE;
 
       if (priv->magnifier_popover)
         gtk_popover_popdown (GTK_POPOVER (priv->magnifier_popover));
@@ -3100,7 +3100,7 @@ gtk_text_long_press_gesture_cancelled (GtkGestureLongPress *gesture,
 {
   GtkTextPrivate *priv = gtk_text_get_instance_private (self);
 
-  priv->touch_long_press_pending_bubble = FALSE;
+  priv->in_long_press = FALSE;
 
   if (priv->magnifier_popover)
     gtk_popover_popdown (GTK_POPOVER (priv->magnifier_popover));
@@ -3122,7 +3122,7 @@ gtk_text_long_press_gesture_pressed (GtkGestureLongPress *gesture,
 
   gtk_text_selection_bubble_popup_unset (self);
 
-  priv->touch_long_press_pending_bubble = TRUE;
+  priv->in_long_press = TRUE;
   priv->text_handles_enabled = TRUE;
   gtk_text_update_handles (self);
 
