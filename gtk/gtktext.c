@@ -3094,6 +3094,8 @@ gtk_text_click_gesture_released (GtkGestureClick *gesture,
     gtk_im_context_activate_osk (priv->im_context, event);
 }
 
+static void gtk_text_show_magnifier (GtkText *self, int x, int y);
+
 static void
 gtk_text_long_press_gesture_cancelled (GtkGestureLongPress *gesture,
                                        GtkText             *self)
