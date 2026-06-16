@@ -116,14 +116,12 @@ public final class ImContext {
 		public boolean deleteSurroundingText(int leftLength, int rightLength) {
 			logger.info("IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
 
-			SurroundingRetVal surrounding = GlibContext.blockForMain(() -> {
+			GlibContext.blockForMain(() -> {
 				if (leftLength > 0)
 					ImContext.this.deleteSurrounding(-leftLength, leftLength);
 				if (rightLength > 0)
 					ImContext.this.deleteSurrounding(0, rightLength);
-				return ImContext.this.getSurrounding();
 			});
-			syncEditableFromGtk(getEditable(), surrounding);
 			return true;
 		}
 	}
