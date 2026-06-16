@@ -47,19 +47,6 @@ gdk_android_popup_present (GdkPopup       *popup,
     popup_parent_surface = activity_surface;
   GdkAndroidSurface *popup_parent_impl = (GdkAndroidSurface *) popup_parent_surface;
 
-  g_message ("OLLMchat.Popup: present popup=%p parent=%p activity=%p "
-             "parent_xywh=%d,%d %dx%d bounds=%d,%d %dx%d "
-             "popup_bounds=%d,%d %dx%d java_cfg=%d,%d %dx%d scale=%d new_surface=%d",
-             popup, popup_parent_surface, activity_surface,
-             popup_parent_surface->x, popup_parent_surface->y,
-             popup_parent_surface->width, popup_parent_surface->height,
-             bounds.x, bounds.y, bounds.width, bounds.height,
-             self->popup_bounds.x, self->popup_bounds.y,
-             self->popup_bounds.width, self->popup_bounds.height,
-             surface_impl->cfg.x, surface_impl->cfg.y,
-             surface_impl->cfg.width, surface_impl->cfg.height,
-             activity_impl->cfg.scale,
-             surface_impl->surface == NULL);
   surface_impl->visible = TRUE;
 
   gdk_popup_layout_ref (layout);
@@ -126,6 +113,19 @@ gdk_android_popup_present (GdkPopup       *popup,
         (gint) ceilf (self->popup_bounds.height * activity_impl->cfg.scale);
   }
 
+  g_message ("OLLMchat.Popup: present popup=%p parent=%p activity=%p "
+             "parent_xywh=%d,%d %dx%d bounds=%d,%d %dx%d "
+             "popup_bounds=%d,%d %dx%d java_cfg=%d,%d %dx%d scale=%d new_surface=%d",
+             popup, popup_parent_surface, activity_surface,
+             popup_parent_surface->x, popup_parent_surface->y,
+             popup_parent_surface->width, popup_parent_surface->height,
+             bounds.x, bounds.y, bounds.width, bounds.height,
+             self->popup_bounds.x, self->popup_bounds.y,
+             self->popup_bounds.width, self->popup_bounds.height,
+             surface_impl->cfg.x, surface_impl->cfg.y,
+             surface_impl->cfg.width, surface_impl->cfg.height,
+             activity_impl->cfg.scale,
+             surface_impl->surface == NULL);
 
   JNIEnv *env = gdk_android_get_env ();
   if (!surface_impl->surface)
