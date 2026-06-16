@@ -19,6 +19,7 @@
 
 #include <glib.h>
 #include <gmodule.h>
+#include <gio/gio.h>
 
 #include <gdk/android/gdkandroid.h>
 #include <gdk/android/gdkandroidinit-private.h>
@@ -279,6 +280,9 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
                    "XDG_CONFIG_HOME", userconfigdir,
                    "XDG_DATA_HOME", userdatadir,
                    NULL);
+
+  /* TLS modules are configured later in ollmapp_configure_android_gio_tls_modules()
+   * after GIO initialization, so we do not scan assets/share/gio/modules here. */
 
   g_free (configdir);
   g_free (datadir);

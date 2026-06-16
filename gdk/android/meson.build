@@ -17,6 +17,7 @@ gdk_android_sources = files([
 
   'gdkandroidcontentfile.c',
 
+  'gdkandroidollmchatpatch.c',
   'gdkandroidutils.c'
 ])
 

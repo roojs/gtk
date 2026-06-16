@@ -39,6 +39,25 @@ public final class ImContext {
 
 	public native boolean commit(String string);
 
+	private void syncEditableFromGtk(Editable content, SurroundingRetVal surrounding) {
+		if (content == null)
+			return;
+		if (surrounding == null || surrounding.text == null) {
+			content.clear();
+			return;
+		}
+		content.replace(0, content.length(), surrounding.text);
+		int len = content.length();
+		int cursor = Math.min(Math.max(surrounding.cursor_index, 0), len);
+		int anchor = Math.min(Math.max(surrounding.anchor_index, 0), len);
+		Selection.setSelection(content, anchor, cursor);
+	}
+
+	private void syncEditableFromGtk(Editable content) {
+		SurroundingRetVal surrounding = GlibContext.blockForMain(this::getSurrounding);
+		syncEditableFromGtk(content, surrounding);
+	}
+
 	@Keep
 	private static void reset(View view) {
 		InputMethodManager imm = view.getContext().getSystemService(InputMethodManager.class);
@@ -67,6 +86,7 @@ public final class ImContext {
 
 				ImContext.this.updatePreedit(content.toString(), b);
 			});
+			syncEditableFromGtk(getEditable());
 			return true;
 		}
 
@@ -78,7 +98,7 @@ public final class ImContext {
 			Editable content = getEditable();
 			if (content.length() > 0)
 				GlibContext.blockForMain(() -> ImContext.this.commit(content.toString()));
-			content.clear();
+			syncEditableFromGtk(getEditable());
 			return true;
 		}
 
@@ -88,6 +108,7 @@ public final class ImContext {
 
 			if (text != null && text.length() > 0)
 				GlibContext.blockForMain(() -> ImContext.this.commit(text.toString()));
+			syncEditableFromGtk(getEditable());
 			return true;
 		}
 
@@ -95,12 +116,14 @@ public final class ImContext {
 		public boolean deleteSurroundingText(int leftLength, int rightLength) {
 			logger.info("IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
 
-			GlibContext.blockForMain(() -> {
+			SurroundingRetVal surrounding = GlibContext.blockForMain(() -> {
 				if (leftLength > 0)
 					ImContext.this.deleteSurrounding(-leftLength, leftLength);
 				if (rightLength > 0)
 					ImContext.this.deleteSurrounding(0, rightLength);
+				return ImContext.this.getSurrounding();
 			});
+			syncEditableFromGtk(getEditable(), surrounding);
 			return true;
 		}
 	}

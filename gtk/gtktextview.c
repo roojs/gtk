@@ -668,6 +668,10 @@ static void gtk_text_view_update_handles       (GtkTextView           *text_view
 
 static void gtk_text_view_selection_bubble_popup_unset (GtkTextView *text_view);
 static void gtk_text_view_selection_bubble_popup_set   (GtkTextView *text_view);
+static void gtk_text_view_long_press_gesture_pressed   (GtkGestureLongPress *gesture,
+                                                        double               x,
+                                                        double               y,
+                                                        GtkTextView         *text_view);
 
 static gboolean gtk_text_view_extend_selection (GtkTextView            *text_view,
                                                 GtkTextExtendSelection  granularity,
@@ -1981,6 +1985,7 @@ gtk_text_view_init (GtkTextView *text_view)
   GtkTextViewPrivate *priv;
   GtkEventController *controller;
   GtkGesture *gesture;
+  GtkGesture *click_gesture;
 
   text_view->priv = gtk_text_view_get_instance_private (text_view);
   priv = text_view->priv;
@@ -2052,6 +2057,15 @@ gtk_text_view_init (GtkTextView *text_view)
                     G_CALLBACK (gtk_text_view_click_gesture_released),
                     widget);
   gtk_widget_add_controller (widget, GTK_EVENT_CONTROLLER (gesture));
+  click_gesture = gesture;
+
+  gesture = gtk_gesture_long_press_new ();
+  gtk_gesture_single_set_touch_only (GTK_GESTURE_SINGLE (gesture), TRUE);
+  g_signal_connect (gesture, "pressed",
+                    G_CALLBACK (gtk_text_view_long_press_gesture_pressed),
+                    widget);
+  gtk_widget_add_controller (widget, GTK_EVENT_CONTROLLER (gesture));
+  gtk_gesture_group (click_gesture, gesture);
 
   priv->drag_gesture = gtk_gesture_drag_new ();
   g_signal_connect (priv->drag_gesture, "drag-update",
@@ -9568,6 +9582,16 @@ gtk_text_view_selection_bubble_popup_set (GtkTextView *text_view)
 
   priv->selection_bubble_timeout_id = g_timeout_add (50, gtk_text_view_selection_bubble_popup_show, text_view);
   gdk_source_set_static_name_by_id (priv->selection_bubble_timeout_id, "[gtk] gtk_text_view_selection_bubble_popup_cb");
+}
+
+static void
+gtk_text_view_long_press_gesture_pressed (GtkGestureLongPress *gesture,
+                                          double               x,
+                                          double               y,
+                                          GtkTextView         *text_view)
+{
+  gtk_text_view_selection_bubble_popup_set (text_view);
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
 }
 
 /* Child GdkSurfaces */
