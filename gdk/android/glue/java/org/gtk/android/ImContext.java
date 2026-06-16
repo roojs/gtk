@@ -10,6 +10,8 @@ import android.view.inputmethod.InputMethodManager;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 
+import java.util.logging.Logger;
+
 public final class ImContext {
 	public static final class SurroundingRetVal {
 		public String text;
@@ -38,23 +40,16 @@ public final class ImContext {
 
 	public native boolean commit(String string);
 
-	private void syncEditableFromGtk(Editable content, SurroundingRetVal surrounding) {
-		if (content == null)
+	private void syncEditableFromGtk(Editable content) {
+		SurroundingRetVal surrounding = GlibContext.blockForMain(this::getSurrounding);
+		if (surrounding == null)
 			return;
-		if (surrounding == null || surrounding.text == null) {
-			content.clear();
-			return;
-		}
+
 		content.replace(0, content.length(), surrounding.text);
 		int len = content.length();
 		int cursor = Math.min(Math.max(surrounding.cursor_index, 0), len);
 		int anchor = Math.min(Math.max(surrounding.anchor_index, 0), len);
 		Selection.setSelection(content, anchor, cursor);
-	}
-
-	private void syncEditableFromGtk(Editable content) {
-		SurroundingRetVal surrounding = GlibContext.blockForMain(this::getSurrounding);
-		syncEditableFromGtk(content, surrounding);
 	}
 
 	@Keep
@@ -64,40 +59,48 @@ public final class ImContext {
 	}
 
 	final class ImeConnection extends BaseInputConnection {
+		private Logger logger;
+
 		public ImeConnection(@NonNull View target) {
 			super(target, true);
+			this.logger = Logger.getLogger("IME Connection");
 		}
 
 		@Override
 		public boolean setComposingText(CharSequence text, int newCursorPosition) {
+			logger.info("IME: setComposingText()");
 			super.setComposingText(text, newCursorPosition);
 
-			final Editable composing = getEditable();
+			Editable content = getEditable();
 			GlibContext.blockForMain(() -> {
-				int a = Selection.getSelectionStart(composing);
-				int b = Selection.getSelectionEnd(composing);
+				int a = Selection.getSelectionStart(content);
+				int b = Selection.getSelectionEnd(content);
 				if (a > b)
 					b = a;
-				ImContext.this.updatePreedit(composing.toString(), b);
+
+				ImContext.this.updatePreedit(content.toString(), b);
 			});
 			return true;
 		}
 
 		@Override
 		public boolean finishComposingText() {
+			logger.info("IME: finishComposingText()");
 			super.finishComposingText();
 
-			final Editable finished = getEditable();
-			if (finished != null && finished.length() > 0) {
-				GlibContext.blockForMain(() -> ImContext.this.commit(finished.toString()));
-				syncEditableFromGtk(finished);
+			Editable content = getEditable();
+			if (content.length() > 0) {
+				GlibContext.blockForMain(() -> ImContext.this.commit(content.toString()));
+				syncEditableFromGtk(content);
 			}
 			return true;
 		}
 
 		@Override
 		public boolean commitText(CharSequence text, int newCursorPosition) {
-			if (text != null && text.length() > 0)
+			logger.info("IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
+
+			if (text.length() > 0)
 				GlibContext.blockForMain(() -> ImContext.this.commit(text.toString()));
 			syncEditableFromGtk(getEditable());
 			return true;
@@ -105,21 +108,23 @@ public final class ImContext {
 
 		@Override
 		public boolean sendKeyEvent(KeyEvent event) {
-			if (event != null
-					&& event.getKeyCode() == KeyEvent.KEYCODE_DEL
-					&& (event.getAction() == KeyEvent.ACTION_DOWN
-							|| event.getAction() == KeyEvent.ACTION_MULTIPLE)) {
-				int count = event.getRepeatCount() > 0 ? event.getRepeatCount() : 1;
-				for (int i = 0; i < count; i++) {
-					GlibContext.blockForMain(() -> ImContext.this.deleteSurrounding(-1, 1));
-				}
-				return true;
-			}
-			return super.sendKeyEvent(event);
+			if (event.getKeyCode() != KeyEvent.KEYCODE_DEL)
+				return super.sendKeyEvent(event);
+			if (event.getAction() != KeyEvent.ACTION_DOWN
+					&& event.getAction() != KeyEvent.ACTION_MULTIPLE)
+				return super.sendKeyEvent(event);
+
+			int count = event.getRepeatCount() > 0 ? event.getRepeatCount() : 1;
+			for (int i = 0; i < count; i++)
+				GlibContext.blockForMain(() -> ImContext.this.deleteSurrounding(-1, 1));
+			return true;
 		}
 
 		@Override
 		public boolean deleteSurroundingText(int leftLength, int rightLength) {
+			logger.info("IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
+
+			// The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
 			GlibContext.blockForMain(() -> {
 				if (leftLength > 0)
 					ImContext.this.deleteSurrounding(-leftLength, leftLength);

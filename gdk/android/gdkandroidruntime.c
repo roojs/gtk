@@ -17,10 +17,8 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
-#include <dlfcn.h>
 #include <glib.h>
 #include <gmodule.h>
-#include <gio/gio.h>
 
 #include <gdk/android/gdkandroid.h>
 #include <gdk/android/gdkandroidinit-private.h>
@@ -222,58 +220,6 @@ gdk_android_runtime_path_of_dir (JNIEnv *env, jobject dir)
 
 void g_set_user_dirs (const char *first_dir_type, ...) G_GNUC_NULL_TERMINATED;
 
-static void
-gdk_android_preload_openssl_libs (const char *dir)
-{
-  static const char *candidates[] = {
-    "libcrypto.so",
-    "libssl.so",
-    "libcrypto.so.3",
-    "libssl.so.3",
-    NULL
-  };
-  gsize i;
-
-  if (dir == NULL || dir[0] == '\0')
-    return;
-
-  for (i = 0; candidates[i] != NULL; i++)
-    {
-      g_autofree char *path = g_build_filename (dir, candidates[i], NULL);
-
-      if (g_file_test (path, G_FILE_TEST_IS_REGULAR))
-        dlopen (path, RTLD_NOW | RTLD_GLOBAL);
-    }
-}
-
-static void
-gdk_android_prepare_tls_modules (const char *application_library,
-                                   const char *datadir)
-{
-  g_autofree char *lib_dir = NULL;
-  g_autofree char *gio_module_dir = NULL;
-
-  if (application_library != NULL && application_library[0] != '\0')
-    {
-      lib_dir = g_path_get_dirname (application_library);
-      gdk_android_preload_openssl_libs (lib_dir);
-    }
-
-  gio_module_dir = g_build_filename (datadir, "gio", "modules", NULL);
-  if (g_file_test (gio_module_dir, G_FILE_TEST_IS_DIR))
-    g_setenv ("GIO_MODULE_DIR", gio_module_dir, TRUE);
-}
-
-static void
-gdk_android_scan_gio_modules (const char *datadir)
-{
-  g_autofree char *gio_module_dir =
-      g_build_filename (datadir, "gio", "modules", NULL);
-
-  if (g_file_test (gio_module_dir, G_FILE_TEST_IS_DIR))
-    g_io_modules_scan_all_in_directory (gio_module_dir);
-}
-
 static GThread *gtk_thread_s = NULL;
 
 static void
@@ -334,10 +280,8 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
                    "XDG_DATA_HOME", userdatadir,
                    NULL);
 
-  gchar *application_library_str = gdk_android_java_to_utf8 (application_library, NULL);
-  gdk_android_prepare_tls_modules (application_library_str, datadir);
-
   g_free (configdir);
+  g_free (datadir);
   g_free (userconfigdir);
   g_free (userdatadir);
 
@@ -348,6 +292,7 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
 
   jclass link_error_class = (*env)->FindClass (env, "java/lang/UnsatisfiedLinkError");
 
+  gchar *application_library_str = gdk_android_java_to_utf8 (application_library, NULL);
   GError *err = NULL;
   GModule *application = g_module_open_full (application_library_str, 0, &err);
   if (err)
@@ -359,7 +304,6 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
       g_free (errmsg);
 
       g_error_free (err);
-      g_free (datadir);
       g_free (data);
       return;
   }
@@ -376,14 +320,10 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
 
       g_error_free (err);
       g_module_close (application);
-      g_free (datadir);
       g_free (data);
       return;
     }
   g_module_make_resident (application);
-
-  gdk_android_scan_gio_modules (datadir);
-  g_free (datadir);
 
   gint pipefd[2];
   rc = pipe (pipefd);

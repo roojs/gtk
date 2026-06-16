@@ -549,6 +549,9 @@ static void     gtk_text_long_press_gesture_pressed (GtkGestureLongPress      *g
                                                      GtkText                  *self);
 static void     gtk_text_long_press_gesture_cancelled (GtkGestureLongPress    *gesture,
                                                        GtkText                *self);
+static void     gtk_text_show_magnifier               (GtkText                *self,
+                                                       int                      x,
+                                                       int                      y);
 static void     gtk_text_drag_gesture_update        (GtkGestureDrag           *gesture,
                                                      double                    offset_x,
                                                      double                    offset_y,
@@ -2963,13 +2966,9 @@ gtk_text_click_gesture_pressed (GtkGestureClick *gesture,
                 {
                   if (priv->selection_bubble &&
                       gtk_widget_get_visible (priv->selection_bubble))
-                    {
-                      gtk_text_selection_bubble_popup_unset (self);
-                    }
+                    gtk_text_selection_bubble_popup_unset (self);
                   else
-                    {
-                      gtk_text_selection_bubble_popup_set (self);
-                    }
+                    gtk_text_selection_bubble_popup_set (self);
                 }
               else if (extend_selection)
                 {
@@ -3085,8 +3084,6 @@ gtk_text_click_gesture_released (GtkGestureClick *gesture,
       (gtk_text_get_input_hints (self) & GTK_INPUT_HINT_INHIBIT_OSK) == 0)
     gtk_im_context_activate_osk (priv->im_context, event);
 }
-
-static void gtk_text_show_magnifier (GtkText *self, int x, int y);
 
 static void
 gtk_text_long_press_gesture_cancelled (GtkGestureLongPress *gesture,

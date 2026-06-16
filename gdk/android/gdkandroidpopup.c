@@ -37,16 +37,15 @@ gdk_android_popup_present (GdkPopup       *popup,
   GdkAndroidPopup *self = (GdkAndroidPopup *) popup;
   GdkAndroidSurface *surface_impl = (GdkAndroidSurface *) self;
 
-  GdkAndroidToplevel *activity_toplevel =
-      gdk_android_surface_get_toplevel (surface_impl);
-  GdkAndroidSurface *activity_impl = (GdkAndroidSurface *) activity_toplevel;
-  GdkSurface *activity_surface = (GdkSurface *) activity_toplevel;
+  GdkAndroidToplevel *parent = gdk_android_surface_get_toplevel (surface_impl);
+  GdkAndroidSurface *parent_impl = (GdkAndroidSurface *) parent;
+  GdkSurface *parent_surface = (GdkSurface *) parent;
 
   GdkSurface *popup_parent_surface = gdk_popup_get_parent (popup);
   if (popup_parent_surface == NULL)
-    popup_parent_surface = activity_surface;
-  GdkAndroidSurface *popup_parent_impl = (GdkAndroidSurface *) popup_parent_surface;
+    popup_parent_surface = parent_surface;
 
+  g_debug("TRACE: Android.Popup: present called %p", popup);
   surface_impl->visible = TRUE;
 
   gdk_popup_layout_ref (layout);
@@ -59,19 +58,6 @@ gdk_android_popup_present (GdkPopup       *popup,
                                      &shadow_right,
                                      &shadow_top,
                                      &shadow_bottom);
-
-  /* Parent position from Java layout may lag behind GTK layout for nested
-   * surfaces (e.g. touch selection bubbles inside Adw dialogs). */
-  if (popup_parent_impl->cfg.scale > 0)
-    {
-      GdkSurface *parent_surf = GDK_SURFACE (popup_parent_surface);
-
-      parent_surf->x =
-          (gint) (popup_parent_impl->cfg.x / popup_parent_impl->cfg.scale);
-      parent_surf->y =
-          (gint) (popup_parent_impl->cfg.y / popup_parent_impl->cfg.scale);
-    }
-
 
   GdkRectangle bounds;
   bounds.x = popup_parent_surface->x;
@@ -92,46 +78,25 @@ gdk_android_popup_present (GdkPopup       *popup,
                                    self->layout,
                                    GDK_SURFACE_LAYOUT_POPUP_HELPER_ROOT_OUT,
                                    &self->popup_bounds);
-  /* Keep native geometry in sync with the layout result. Child popups
-   * (e.g. touch selection bubbles inside a dialog) consult the parent
-   * surface position during layout, but Java only reports position
-   * asynchronously via notifyLayoutPosition. */
-  {
-    GdkSurface *surface = GDK_SURFACE (self);
-
-    surface->x = self->popup_bounds.x;
-    surface->y = self->popup_bounds.y;
-    surface->width = self->popup_bounds.width;
-    surface->height = self->popup_bounds.height;
-    surface_impl->cfg.x =
-        (gint) (self->popup_bounds.x * activity_impl->cfg.scale);
-    surface_impl->cfg.y =
-        (gint) (self->popup_bounds.y * activity_impl->cfg.scale);
-    surface_impl->cfg.width =
-        (gint) ceilf (self->popup_bounds.width * activity_impl->cfg.scale);
-    surface_impl->cfg.height =
-        (gint) ceilf (self->popup_bounds.height * activity_impl->cfg.scale);
-  }
 
   JNIEnv *env = gdk_android_get_env ();
   if (!surface_impl->surface)
     {
-      jobject view = (*env)->GetObjectField (env, activity_toplevel->activity,
-                                             gdk_android_get_java_cache ()->toplevel.toplevel_view);
+      jobject view = (*env)->GetObjectField (env, parent->activity, gdk_android_get_java_cache ()->toplevel.toplevel_view);
       (*env)->CallVoidMethod (env, view, gdk_android_get_java_cache ()->toplevel_view.push_popup, (jlong) self,
-                              (jint) (self->popup_bounds.x * activity_impl->cfg.scale),
-                              (jint) (self->popup_bounds.y * activity_impl->cfg.scale),
-                              (jint) ceilf (self->popup_bounds.width * activity_impl->cfg.scale),
-                              (jint) ceilf (self->popup_bounds.height * activity_impl->cfg.scale));
+                              (jint) (self->popup_bounds.x * parent_impl->cfg.scale),
+                              (jint) (self->popup_bounds.y * parent_impl->cfg.scale),
+                              (jint) ceilf (self->popup_bounds.width * parent_impl->cfg.scale),
+                              (jint) ceilf (self->popup_bounds.height * parent_impl->cfg.scale));
       (*env)->DeleteLocalRef (env, view);
     }
   else
     {
       (*env)->CallVoidMethod (env, surface_impl->surface, gdk_android_get_java_cache ()->surface.reposition,
-                              (jint) (self->popup_bounds.x * activity_impl->cfg.scale),
-                              (jint) (self->popup_bounds.y * activity_impl->cfg.scale),
-                              (jint) ceilf (self->popup_bounds.width * activity_impl->cfg.scale),
-                              (jint) ceilf (self->popup_bounds.height * activity_impl->cfg.scale));
+                              (jint) (self->popup_bounds.x * parent_impl->cfg.scale),
+                              (jint) (self->popup_bounds.y * parent_impl->cfg.scale),
+                              (jint) ceilf (self->popup_bounds.width * parent_impl->cfg.scale),
+                              (jint) ceilf (self->popup_bounds.height * parent_impl->cfg.scale));
       (*env)->CallVoidMethod(env, surface_impl->surface, gdk_android_get_java_cache ()->surface.set_visibility, TRUE);
     }
 
