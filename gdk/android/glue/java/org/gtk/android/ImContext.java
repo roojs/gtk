@@ -96,13 +96,13 @@ public final class ImContext {
 					+ " editable_len=" + (content != null ? content.length() : -1));
 			super.setComposingText(text, newCursorPosition);
 
-			content = getEditable();
+			final Editable composing = getEditable();
 			GlibContext.blockForMain(() -> {
-				int a = Selection.getSelectionStart(content);
-				int b = Selection.getSelectionEnd(content);
+				int a = Selection.getSelectionStart(composing);
+				int b = Selection.getSelectionEnd(composing);
 				if (a > b)
 					b = a;
-				ImContext.this.updatePreedit(content.toString(), b);
+				ImContext.this.updatePreedit(composing.toString(), b);
 			});
 			/* GTK preedit is authoritative; full Editable replace breaks Gboard repeat. */
 			return true;
@@ -115,10 +115,10 @@ public final class ImContext {
 			Log.i(IME_LOG_TAG, "finishComposingText editable_len=" + editableLen);
 			super.finishComposingText();
 
-			content = getEditable();
-			if (content != null && content.length() > 0) {
-				GlibContext.blockForMain(() -> ImContext.this.commit(content.toString()));
-				syncEditableFromGtk(content);
+			final Editable finished = getEditable();
+			if (finished != null && finished.length() > 0) {
+				GlibContext.blockForMain(() -> ImContext.this.commit(finished.toString()));
+				syncEditableFromGtk(finished);
 			}
 			/* Empty Editable + Gboard backspace: skip sync to avoid resetting IME repeat. */
 			return true;
