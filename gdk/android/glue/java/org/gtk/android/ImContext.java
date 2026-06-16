@@ -140,7 +140,7 @@ public final class ImContext {
 			int seq = ++deleteSeq;
 
 			Editable editable = getEditable();
-			SurroundingRetVal before = GlibContext.blockForMain(this::getSurrounding);
+			SurroundingRetVal before = GlibContext.blockForMain(ImContext.this::getSurrounding);
 			Log.i(IME_LOG_TAG, "deleteSurroundingText seq=" + seq
 					+ " left=" + leftLength
 					+ " right=" + rightLength
@@ -155,7 +155,7 @@ public final class ImContext {
 					ImContext.this.deleteSurrounding(0, rightLength);
 			});
 
-			SurroundingRetVal after = GlibContext.blockForMain(this::getSurrounding);
+			SurroundingRetVal after = GlibContext.blockForMain(ImContext.this::getSurrounding);
 			Log.i(IME_LOG_TAG, "deleteSurroundingText seq=" + seq
 					+ " done editable_len=" + (editable != null ? editable.length() : -1)
 					+ " gtk_after={" + surroundingSummary(after) + "}");
