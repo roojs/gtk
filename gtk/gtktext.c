@@ -2957,9 +2957,17 @@ gtk_text_click_gesture_pressed (GtkGestureClick *gesture,
                 {
                   if (priv->selection_bubble &&
                       gtk_widget_get_visible (priv->selection_bubble))
-                    gtk_text_selection_bubble_popup_unset (self);
+                    {
+                      g_message ("OLLMchat.Paste: touch tap in_selection toggling bubble OFF widget=%s",
+                                 G_OBJECT_TYPE_NAME (self));
+                      gtk_text_selection_bubble_popup_unset (self);
+                    }
                   else
-                    gtk_text_selection_bubble_popup_set (self);
+                    {
+                      g_message ("OLLMchat.Paste: touch tap in_selection requesting bubble widget=%s",
+                                 G_OBJECT_TYPE_NAME (self));
+                      gtk_text_selection_bubble_popup_set (self);
+                    }
                 }
               else if (extend_selection)
                 {
@@ -3069,6 +3077,17 @@ gtk_text_long_press_gesture_pressed (GtkGestureLongPress *gesture,
                                      double               y,
                                      GtkText             *self)
 {
+  GtkTextPrivate *priv = gtk_text_get_instance_private (self);
+  GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+
+  g_message ("OLLMchat.Paste: long-press widget=%s parent=%s at=%.1f,%.1f "
+             "cursor=%d bound=%d editable=%d has_selection=%d",
+             G_OBJECT_TYPE_NAME (self),
+             parent ? G_OBJECT_TYPE_NAME (parent) : "null",
+             x, y,
+             priv->current_pos, priv->selection_bound,
+             priv->editable,
+             priv->selection_bound != priv->current_pos);
   gtk_text_selection_bubble_popup_set (self);
   gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
 }
@@ -6509,13 +6528,25 @@ gtk_text_selection_bubble_popup_show (gpointer user_data)
   GtkWidget *toolbar;
   GMenuModel *model;
   int i;
+  int menu_items;
 
   gtk_text_update_clipboard_actions (self);
 
   has_selection = priv->selection_bound != priv->current_pos;
 
+  g_message ("OLLMchat.Paste: bubble_show widget=%s parent=%s "
+             "has_selection=%d editable=%d cursor=%d bound=%d size=%dx%d",
+             G_OBJECT_TYPE_NAME (self),
+             gtk_widget_get_parent (GTK_WIDGET (self))
+               ? G_OBJECT_TYPE_NAME (gtk_widget_get_parent (GTK_WIDGET (self)))
+               : "null",
+             has_selection, priv->editable,
+             priv->current_pos, priv->selection_bound,
+             text_width, text_height);
+
   if (!has_selection && !priv->editable)
     {
+      g_message ("OLLMchat.Paste: bubble_show skipped (not editable, no selection)");
       priv->selection_bubble_timeout_id = 0;
       return G_SOURCE_REMOVE;
     }
@@ -6541,15 +6572,24 @@ gtk_text_selection_bubble_popup_show (gpointer user_data)
   gtk_box_append (GTK_BOX (box), toolbar);
 
   model = gtk_text_get_menu_model (self);
+  menu_items = g_menu_model_get_n_items (model);
 
-  for (i = 0; i < g_menu_model_get_n_items (model); i++)
+  for (i = 0; i < menu_items; i++)
     append_bubble_item (self, toolbar, model, i);
 
   g_object_unref (model);
 
   if (!gtk_widget_compute_point (GTK_WIDGET (self), gtk_widget_get_parent (GTK_WIDGET (self)),
                                  &GRAPHENE_POINT_INIT (0, 0), &p))
-    graphene_point_init (&p, 0, 0);
+    {
+      g_message ("OLLMchat.Paste: bubble_show compute_point to parent failed; using 0,0");
+      graphene_point_init (&p, 0, 0);
+    }
+  else
+    {
+      g_message ("OLLMchat.Paste: bubble_show parent_offset=%.1f,%.1f",
+                 p.x, p.y);
+    }
 
   gtk_text_get_cursor_locations (self, &start_x, NULL);
 
@@ -6580,6 +6620,11 @@ gtk_text_selection_bubble_popup_show (gpointer user_data)
   gtk_popover_set_pointing_to (GTK_POPOVER (priv->selection_bubble), &rect);
   gtk_popover_popup (GTK_POPOVER (priv->selection_bubble));
 
+  g_message ("OLLMchat.Paste: bubble_popup rect=%d,%d %dx%d visible=%d menu_items=%d",
+             rect.x, rect.y, rect.width, rect.height,
+             gtk_widget_get_visible (priv->selection_bubble),
+             menu_items);
+
   priv->selection_bubble_timeout_id = 0;
 
   return G_SOURCE_REMOVE;
@@ -6589,6 +6634,12 @@ static void
 gtk_text_selection_bubble_popup_unset (GtkText *self)
 {
   GtkTextPrivate *priv = gtk_text_get_instance_private (self);
+
+  if (priv->selection_bubble || priv->selection_bubble_timeout_id)
+    g_message ("OLLMchat.Paste: bubble_unset widget=%s had_bubble=%d pending=%d",
+               G_OBJECT_TYPE_NAME (self),
+               priv->selection_bubble != NULL,
+               priv->selection_bubble_timeout_id != 0);
 
   if (priv->selection_bubble)
     gtk_widget_set_visible (priv->selection_bubble, FALSE);
@@ -6600,6 +6651,10 @@ static void
 gtk_text_selection_bubble_popup_set (GtkText *self)
 {
   GtkTextPrivate *priv = gtk_text_get_instance_private (self);
+
+  g_message ("OLLMchat.Paste: bubble_set scheduled widget=%s cursor=%d bound=%d",
+             G_OBJECT_TYPE_NAME (self),
+             priv->current_pos, priv->selection_bound);
 
   if (priv->selection_bubble_timeout_id)
     g_source_remove (priv->selection_bubble_timeout_id);

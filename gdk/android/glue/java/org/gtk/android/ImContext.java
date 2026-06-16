@@ -2,6 +2,7 @@ package org.gtk.android;
 
 import android.text.Editable;
 import android.text.Selection;
+import android.util.Log;
 import android.view.View;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -12,6 +13,10 @@ import androidx.annotation.NonNull;
 import java.util.logging.Logger;
 
 public final class ImContext {
+	private static final String IME_LOG_TAG = "OLLMchat.IME";
+	private static int deleteSeq = 0;
+	private static long lastDeleteUptimeMs = 0;
+
 	public static final class SurroundingRetVal {
 		public String text;
 		public int cursor_index;
@@ -43,14 +48,29 @@ public final class ImContext {
 		if (content == null)
 			return;
 		if (surrounding == null || surrounding.text == null) {
+			Log.i(IME_LOG_TAG, "syncEditableFromGtk: clearing editable (no surrounding from GTK)");
 			content.clear();
 			return;
 		}
+		Log.i(IME_LOG_TAG, "syncEditableFromGtk: gtk_len=" + surrounding.text.length()
+				+ " cursor=" + surrounding.cursor_index
+				+ " anchor=" + surrounding.anchor_index
+				+ " editable_before=" + content.length());
 		content.replace(0, content.length(), surrounding.text);
 		int len = content.length();
 		int cursor = Math.min(Math.max(surrounding.cursor_index, 0), len);
 		int anchor = Math.min(Math.max(surrounding.anchor_index, 0), len);
 		Selection.setSelection(content, anchor, cursor);
+	}
+
+	private static String surroundingSummary(SurroundingRetVal surrounding) {
+		if (surrounding == null)
+			return "null";
+		if (surrounding.text == null)
+			return "text=null";
+		return "len=" + surrounding.text.length()
+				+ " cursor=" + surrounding.cursor_index
+				+ " anchor=" + surrounding.anchor_index;
 	}
 
 	private void syncEditableFromGtk(Editable content) {
@@ -114,7 +134,19 @@ public final class ImContext {
 
 		@Override
 		public boolean deleteSurroundingText(int leftLength, int rightLength) {
-			logger.info("IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
+			long now = android.os.SystemClock.uptimeMillis();
+			long sinceLast = lastDeleteUptimeMs > 0 ? now - lastDeleteUptimeMs : -1;
+			lastDeleteUptimeMs = now;
+			int seq = ++deleteSeq;
+
+			Editable editable = getEditable();
+			SurroundingRetVal before = GlibContext.blockForMain(this::getSurrounding);
+			Log.i(IME_LOG_TAG, "deleteSurroundingText seq=" + seq
+					+ " left=" + leftLength
+					+ " right=" + rightLength
+					+ " ms_since_last=" + sinceLast
+					+ " editable_len=" + (editable != null ? editable.length() : -1)
+					+ " gtk_before={" + surroundingSummary(before) + "}");
 
 			GlibContext.blockForMain(() -> {
 				if (leftLength > 0)
@@ -122,6 +154,11 @@ public final class ImContext {
 				if (rightLength > 0)
 					ImContext.this.deleteSurrounding(0, rightLength);
 			});
+
+			SurroundingRetVal after = GlibContext.blockForMain(this::getSurrounding);
+			Log.i(IME_LOG_TAG, "deleteSurroundingText seq=" + seq
+					+ " done editable_len=" + (editable != null ? editable.length() : -1)
+					+ " gtk_after={" + surroundingSummary(after) + "}");
 			return true;
 		}
 	}
