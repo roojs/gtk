@@ -247,7 +247,7 @@ gdk_android_preload_openssl_libs (const char *dir)
 }
 
 static void
-gdk_android_configure_tls_modules (const char *application_library,
+gdk_android_prepare_tls_modules (const char *application_library,
                                    const char *datadir)
 {
   g_autofree char *lib_dir = NULL;
@@ -261,10 +261,17 @@ gdk_android_configure_tls_modules (const char *application_library,
 
   gio_module_dir = g_build_filename (datadir, "gio", "modules", NULL);
   if (g_file_test (gio_module_dir, G_FILE_TEST_IS_DIR))
-    {
-      g_setenv ("GIO_MODULE_DIR", gio_module_dir, TRUE);
-      g_io_modules_scan_all_in_directory (gio_module_dir);
-    }
+    g_setenv ("GIO_MODULE_DIR", gio_module_dir, TRUE);
+}
+
+static void
+gdk_android_scan_gio_modules (const char *datadir)
+{
+  g_autofree char *gio_module_dir =
+      g_build_filename (datadir, "gio", "modules", NULL);
+
+  if (g_file_test (gio_module_dir, G_FILE_TEST_IS_DIR))
+    g_io_modules_scan_all_in_directory (gio_module_dir);
 }
 
 static GThread *gtk_thread_s = NULL;
@@ -328,10 +335,9 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
                    NULL);
 
   gchar *application_library_str = gdk_android_java_to_utf8 (application_library, NULL);
-  gdk_android_configure_tls_modules (application_library_str, datadir);
+  gdk_android_prepare_tls_modules (application_library_str, datadir);
 
   g_free (configdir);
-  g_free (datadir);
   g_free (userconfigdir);
   g_free (userdatadir);
 
@@ -353,6 +359,7 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
       g_free (errmsg);
 
       g_error_free (err);
+      g_free (datadir);
       g_free (data);
       return;
   }
@@ -369,10 +376,14 @@ _gdk_android_application_start_runtime (JNIEnv  *env,
 
       g_error_free (err);
       g_module_close (application);
+      g_free (datadir);
       g_free (data);
       return;
     }
   g_module_make_resident (application);
+
+  gdk_android_scan_gio_modules (datadir);
+  g_free (datadir);
 
   gint pipefd[2];
   rc = pipe (pipefd);
