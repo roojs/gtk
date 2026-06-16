@@ -312,6 +312,7 @@ struct _GtkTextPrivate
   guint         populate_all            : 1;
   guint         propagate_text_width    : 1;
   guint         text_handles_enabled    : 1;
+  guint         touch_long_press_pending_bubble : 1;
   guint         enable_undo             : 1;
 };
 
@@ -546,6 +547,8 @@ static void     gtk_text_long_press_gesture_pressed (GtkGestureLongPress      *g
                                                      double                    x,
                                                      double                    y,
                                                      GtkText                  *self);
+static void     gtk_text_long_press_gesture_cancelled (GtkGestureLongPress    *gesture,
+                                                       GtkText                *self);
 static void     gtk_text_drag_gesture_update        (GtkGestureDrag           *gesture,
                                                      double                    offset_x,
                                                      double                    offset_y,
@@ -2074,8 +2077,11 @@ gtk_text_init (GtkText *self)
   gtk_gesture_single_set_touch_only (GTK_GESTURE_SINGLE (gesture), TRUE);
   g_signal_connect (gesture, "pressed",
                     G_CALLBACK (gtk_text_long_press_gesture_pressed), self);
+  g_signal_connect (gesture, "cancelled",
+                    G_CALLBACK (gtk_text_long_press_gesture_cancelled), self);
   gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (gesture));
   gtk_gesture_group (click_gesture, gesture);
+  gtk_gesture_group (priv->drag_gesture, gesture);
 
   controller = gtk_event_controller_motion_new ();
   gtk_event_controller_set_static_name (controller, "gtk-text-motion-controller");
@@ -3064,11 +3070,43 @@ gtk_text_click_gesture_released (GtkGestureClick *gesture,
     gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (gesture));
 
   if (n_press == 1 &&
+      gtk_event_treat_as_touch (event) &&
+      priv->touch_long_press_pending_bubble)
+    {
+      priv->touch_long_press_pending_bubble = FALSE;
+
+      if (priv->magnifier_popover)
+        gtk_popover_popdown (GTK_POPOVER (priv->magnifier_popover));
+
+      g_message ("OLLMchat.Paste: long-press release showing bubble widget=%s "
+                 "has_selection=%d",
+                 G_OBJECT_TYPE_NAME (self),
+                 priv->selection_bound != priv->current_pos);
+      gtk_text_selection_bubble_popup_set (self);
+      return;
+    }
+
+  if (n_press == 1 &&
       !priv->in_drag &&
       gtk_event_treat_as_touch (event) &&
       priv->current_pos == priv->selection_bound &&
       (gtk_text_get_input_hints (self) & GTK_INPUT_HINT_INHIBIT_OSK) == 0)
     gtk_im_context_activate_osk (priv->im_context, event);
+}
+
+static void
+gtk_text_long_press_gesture_cancelled (GtkGestureLongPress *gesture,
+                                       GtkText             *self)
+{
+  GtkTextPrivate *priv = gtk_text_get_instance_private (self);
+
+  priv->touch_long_press_pending_bubble = FALSE;
+
+  if (priv->magnifier_popover)
+    gtk_popover_popdown (GTK_POPOVER (priv->magnifier_popover));
+
+  g_message ("OLLMchat.Paste: long-press cancelled widget=%s",
+             G_OBJECT_TYPE_NAME (self));
 }
 
 static void
@@ -3079,16 +3117,26 @@ gtk_text_long_press_gesture_pressed (GtkGestureLongPress *gesture,
 {
   GtkTextPrivate *priv = gtk_text_get_instance_private (self);
   GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+  guint length = gtk_entry_buffer_get_length (get_buffer (self));
+  int layout_x = gesture_get_current_point_in_layout (GTK_GESTURE_SINGLE (gesture), self);
+
+  gtk_text_selection_bubble_popup_unset (self);
+
+  priv->touch_long_press_pending_bubble = TRUE;
+  priv->text_handles_enabled = TRUE;
+  gtk_text_update_handles (self);
 
   g_message ("OLLMchat.Paste: long-press widget=%s parent=%s at=%.1f,%.1f "
-             "cursor=%d bound=%d editable=%d has_selection=%d",
+             "len=%u cursor=%d bound=%d editable=%d",
              G_OBJECT_TYPE_NAME (self),
              parent ? G_OBJECT_TYPE_NAME (parent) : "null",
-             x, y,
+             x, y, length,
              priv->current_pos, priv->selection_bound,
-             priv->editable,
-             priv->selection_bound != priv->current_pos);
-  gtk_text_selection_bubble_popup_set (self);
+             priv->editable);
+
+  if (length > 0)
+    gtk_text_show_magnifier (self, layout_x - priv->scroll_offset, (int) y);
+
   gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
 }
 
@@ -3119,6 +3167,9 @@ gtk_text_show_magnifier (GtkText *self,
   GtkTextPrivate *priv = gtk_text_get_instance_private (self);
   const int text_height = gtk_widget_get_height (GTK_WIDGET (self));
   cairo_rectangle_int_t rect;
+
+  if (gtk_entry_buffer_get_length (get_buffer (self)) == 0)
+    return;
 
   gtk_text_ensure_magnifier (self);
 
