@@ -194,8 +194,12 @@ public class ToplevelActivity extends Activity {
 				if (activeImContext == context)
 					return;
 				activeImContext = context;
-				InputMethodManager imm = getSystemService(InputMethodManager.class);
-				imm.restartInput(this);
+				/* Post to UI thread: sync restartInput on the GTK thread deadlocks with
+				 * finishComposingText → blockForMain holding InputMethodManager$H. */
+				runOnUiThread(() -> {
+					InputMethodManager imm = getSystemService(InputMethodManager.class);
+					imm.restartInput(this);
+				});
 			}
 
 			public void reposition(int x, int y, int width, int height) {

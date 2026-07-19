@@ -54,8 +54,11 @@ public final class ImContext {
 
 	@Keep
 	private static void reset(View view) {
-		InputMethodManager imm = view.getContext().getSystemService(InputMethodManager.class);
-		imm.restartInput(view);
+		/* Post to UI thread — same IMM vs blockForMain deadlock as setActiveImContext. */
+		view.post(() -> {
+			InputMethodManager imm = view.getContext().getSystemService(InputMethodManager.class);
+			imm.restartInput(view);
+		});
 	}
 
 	final class ImeConnection extends BaseInputConnection {
