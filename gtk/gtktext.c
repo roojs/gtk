@@ -4610,6 +4610,12 @@ gtk_text_delete_surrounding_cb (GtkIMContext *context,
                                 priv->current_pos + offset + n_chars);
     }
 
+  /* IME delete does not go through the key controller; drop the touch
+   * selection bubble when the selection/cursor changes from the keyboard. */
+  gtk_text_selection_bubble_popup_unset (self);
+  priv->text_handles_enabled = FALSE;
+  gtk_text_update_handles (self);
+
   return TRUE;
 }
 

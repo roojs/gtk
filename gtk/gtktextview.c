@@ -350,6 +350,7 @@ struct _GtkTextViewPrivate
   guint scroll_after_paste : 1;
 
   guint text_handles_enabled : 1;
+  guint in_long_press : 1;
 
   /* GtkScrollablePolicy needs to be checked when
    * driving the scrollable adjustment values */
@@ -668,6 +669,12 @@ static void gtk_text_view_update_handles       (GtkTextView           *text_view
 
 static void gtk_text_view_selection_bubble_popup_unset (GtkTextView *text_view);
 static void gtk_text_view_selection_bubble_popup_set   (GtkTextView *text_view);
+static void gtk_text_view_long_press_gesture_pressed   (GtkGestureLongPress *gesture,
+                                                        double               x,
+                                                        double               y,
+                                                        GtkTextView         *text_view);
+static void gtk_text_view_long_press_gesture_cancelled (GtkGestureLongPress *gesture,
+                                                        GtkTextView         *text_view);
 
 static gboolean gtk_text_view_extend_selection (GtkTextView            *text_view,
                                                 GtkTextExtendSelection  granularity,
@@ -2061,6 +2068,17 @@ gtk_text_view_init (GtkTextView *text_view)
                     G_CALLBACK (gtk_text_view_drag_gesture_end),
                     widget);
   gtk_widget_add_controller (widget, GTK_EVENT_CONTROLLER (priv->drag_gesture));
+
+  gesture = gtk_gesture_long_press_new ();
+  gtk_gesture_single_set_touch_only (GTK_GESTURE_SINGLE (gesture), TRUE);
+  g_signal_connect (gesture, "pressed",
+                    G_CALLBACK (gtk_text_view_long_press_gesture_pressed),
+                    widget);
+  g_signal_connect (gesture, "cancelled",
+                    G_CALLBACK (gtk_text_view_long_press_gesture_cancelled),
+                    widget);
+  gtk_widget_add_controller (widget, GTK_EVENT_CONTROLLER (gesture));
+  gtk_gesture_group (priv->drag_gesture, gesture);
 
   controller = gtk_event_controller_motion_new ();
   g_signal_connect (controller, "motion", G_CALLBACK (gtk_text_view_motion), widget);
@@ -5769,6 +5787,8 @@ gtk_text_view_click_gesture_pressed (GtkGestureClick *gesture,
             GtkTextIter start, end;
 
             priv->text_handles_enabled = gtk_event_treat_as_touch (event);
+            if (gtk_event_treat_as_touch (event))
+              priv->in_long_press = FALSE;
 
             get_iter_from_gesture (text_view, GTK_GESTURE (gesture),
                                    &iter, NULL, NULL);
@@ -7671,6 +7691,14 @@ gtk_text_view_drag_gesture_update (GtkGestureDrag *gesture,
             }
           else
             {
+              /* Touch drag selects only after long-press; otherwise yield to scroll. */
+              if (!text_view->priv->in_long_press)
+                {
+                  gtk_gesture_set_state (text_view->priv->drag_gesture,
+                                         GTK_EVENT_SEQUENCE_DENIED);
+                  return;
+                }
+
               gtk_text_view_start_selection_drag (text_view, &cursor,
                                                   SELECT_WORDS, TRUE);
               data = g_object_get_qdata (G_OBJECT (gesture), quark_text_selection_data);
@@ -7764,13 +7792,27 @@ gtk_text_view_drag_gesture_end (GtkGestureDrag *gesture,
 
   if (!drag_gesture_get_text_surface_coords (gesture, text_view,
                                              &start_x, &start_y, &x, &y))
-    return;
+    {
+      priv->in_long_press = FALSE;
+      return;
+    }
 
   /* Check whether the drag was cancelled rather than finished */
   if (!gtk_gesture_handles_sequence (GTK_GESTURE (gesture), sequence))
-    return;
+    {
+      priv->in_long_press = FALSE;
+      return;
+    }
 
   event = gtk_gesture_get_last_event (GTK_GESTURE (gesture), sequence);
+
+  if (priv->in_long_press)
+    {
+      priv->in_long_press = FALSE;
+      if (gtk_text_buffer_get_selection_bounds (get_buffer (text_view), NULL, NULL))
+        gtk_text_view_selection_bubble_popup_set (text_view);
+      return;
+    }
 
   if ((gtk_event_treat_as_touch (event) || clicked_in_selection) &&
       !gtk_drag_check_threshold_double (GTK_WIDGET (text_view), 0, 0, offset_x, offset_y))
@@ -7789,6 +7831,45 @@ gtk_text_view_drag_gesture_end (GtkGestureDrag *gesture,
 
       gtk_text_view_update_handles (text_view);
     }
+}
+
+static void
+gtk_text_view_long_press_gesture_cancelled (GtkGestureLongPress *gesture,
+                                            GtkTextView         *text_view)
+{
+  GtkTextViewPrivate *priv = text_view->priv;
+
+  priv->in_long_press = FALSE;
+
+  if (priv->magnifier_popover)
+    gtk_widget_set_visible (priv->magnifier_popover, FALSE);
+}
+
+static void
+gtk_text_view_long_press_gesture_pressed (GtkGestureLongPress *gesture,
+                                          double               x,
+                                          double               y,
+                                          GtkTextView         *text_view)
+{
+  GtkTextViewPrivate *priv = text_view->priv;
+  GtkTextIter iter;
+  int gx, gy;
+
+  gtk_text_view_selection_bubble_popup_unset (text_view);
+
+  if (!get_iter_from_gesture (text_view, GTK_GESTURE (gesture), &iter, &gx, &gy))
+    {
+      priv->in_long_press = FALSE;
+      return;
+    }
+
+  priv->in_long_press = TRUE;
+  priv->text_handles_enabled = TRUE;
+
+  gtk_text_view_start_selection_drag (text_view, &iter, SELECT_WORDS, FALSE);
+  gtk_text_view_update_handles (text_view);
+  gtk_text_view_show_magnifier (text_view, &iter, gx, gy);
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
 }
 
 static void
@@ -8912,6 +8993,12 @@ gtk_text_view_delete_surrounding_handler (GtkIMContext  *context,
 
   gtk_text_buffer_delete_interactive (priv->buffer, &start, &end,
                                       priv->editable);
+
+  /* IME delete does not go through the key controller; drop the touch
+   * selection bubble when the selection/cursor changes from the keyboard. */
+  gtk_text_view_selection_bubble_popup_unset (text_view);
+  priv->text_handles_enabled = FALSE;
+  gtk_text_view_update_handles (text_view);
 
   return TRUE;
 }

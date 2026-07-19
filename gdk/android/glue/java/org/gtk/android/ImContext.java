@@ -71,14 +71,13 @@ public final class ImContext {
 			logger.info("IME: setComposingText()");
 			super.setComposingText(text, newCursorPosition);
 
-			Editable content = getEditable();
+			final String preedit = text != null ? text.toString() : "";
+			final int cursor = preedit.length();
 			GlibContext.blockForMain(() -> {
-				int a = Selection.getSelectionStart(content);
-				int b = Selection.getSelectionEnd(content);
-				if (a > b)
-					b = a;
-
-				ImContext.this.updatePreedit(content.toString(), b);
+				if (preedit.length() == 0)
+					ImContext.this.updatePreedit(null, 0);
+				else
+					ImContext.this.updatePreedit(preedit, cursor);
 			});
 			return true;
 		}
@@ -86,13 +85,28 @@ public final class ImContext {
 		@Override
 		public boolean finishComposingText() {
 			logger.info("IME: finishComposingText()");
+			Editable content = getEditable();
+			String toCommit = "";
+			if (content != null) {
+				int start = getComposingSpanStart(content);
+				int end = getComposingSpanEnd(content);
+				if (start >= 0 && end > start)
+					toCommit = content.subSequence(start, end).toString();
+			}
+
 			super.finishComposingText();
 
-			Editable content = getEditable();
-			if (content.length() > 0) {
-				GlibContext.blockForMain(() -> ImContext.this.commit(content.toString()));
-				syncEditableFromGtk(content);
-			}
+			final String commit = toCommit;
+			GlibContext.blockForMain(() -> {
+				/* Android finishComposingText leaves text in place; only commit the
+				 * composing span into GTK. Committing the whole Editable re-inserts
+				 * already-committed text (autocomplete / focus-leave duplicates). */
+				if (commit.length() > 0)
+					ImContext.this.commit(commit);
+				else
+					ImContext.this.updatePreedit(null, 0);
+			});
+			syncEditableFromGtk(getEditable());
 			return true;
 		}
 
@@ -106,6 +120,22 @@ public final class ImContext {
 			return true;
 		}
 
+		private void deleteBackwardOrSelection() {
+			SurroundingRetVal surrounding = ImContext.this.getSurrounding();
+			if (surrounding != null
+					&& surrounding.cursor_index != surrounding.anchor_index) {
+				int start = Math.min(surrounding.cursor_index, surrounding.anchor_index);
+				int end = Math.max(surrounding.cursor_index, surrounding.anchor_index);
+				int n = end - start;
+				if (surrounding.cursor_index >= surrounding.anchor_index)
+					ImContext.this.deleteSurrounding(-n, n);
+				else
+					ImContext.this.deleteSurrounding(0, n);
+				return;
+			}
+			ImContext.this.deleteSurrounding(-1, 1);
+		}
+
 		@Override
 		public boolean sendKeyEvent(KeyEvent event) {
 			if (event.getKeyCode() != KeyEvent.KEYCODE_DEL)
@@ -116,7 +146,7 @@ public final class ImContext {
 
 			int count = event.getRepeatCount() > 0 ? event.getRepeatCount() : 1;
 			for (int i = 0; i < count; i++)
-				GlibContext.blockForMain(() -> ImContext.this.deleteSurrounding(-1, 1));
+				GlibContext.blockForMain(this::deleteBackwardOrSelection);
 			return true;
 		}
 
@@ -126,6 +156,12 @@ public final class ImContext {
 
 			// The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
 			GlibContext.blockForMain(() -> {
+				SurroundingRetVal surrounding = ImContext.this.getSurrounding();
+				if (surrounding != null
+						&& surrounding.cursor_index != surrounding.anchor_index) {
+					deleteBackwardOrSelection();
+					return;
+				}
 				if (leftLength > 0)
 					ImContext.this.deleteSurrounding(-leftLength, leftLength);
 				if (rightLength > 0)

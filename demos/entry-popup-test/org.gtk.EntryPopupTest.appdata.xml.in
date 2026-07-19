@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component xmlns="https://specifications.freedesktop.org/metainfo/1.0" type="desktop">
+  <id>org.gtk.EntryPopupTest</id>
+  <launchable type="desktop-id">org.gtk.EntryPopupTest.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LGPL-2.1-or-later</project_license>
+  <name>Entry Popup Test</name>
+  <summary>Test GtkEntry long-press selection bubble on Android</summary>
+  <description>
+    <p>
+      Minimal test app for GtkEntry long-press magnifier and paste bubble
+      behaviour, including nested dialog popup positioning.
+    </p>
+  </description>
+  <url type="homepage">https://www.gtk.org</url>
+  <releases>
+    <release version="@BUILD_VERSION@" date="2026-06-29"/>
+  </releases>
+</component>

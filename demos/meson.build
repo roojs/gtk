@@ -11,6 +11,7 @@ if meson.version().version_compare('>= 1.8.0')
 endif
 
 subdir('gtk-demo')
+subdir('entry-popup-test')
 subdir('node-editor')
 subdir('widget-factory')
 subdir('print-editor')

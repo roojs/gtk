@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Entry Popup Test
+Comment=Test GtkEntry long-press selection bubble on Android
+Exec=gtk4-entry-popup-test
+Icon=org.gtk.Demo4
+Terminal=false
+Categories=GTK;Development;
